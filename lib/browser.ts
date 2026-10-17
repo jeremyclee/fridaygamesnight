@@ -15,10 +15,6 @@ export function useIsClient(): boolean {
   );
 }
 
-export function puzzleUrl(code: string): string {
-  return `${window.location.origin}/p/${code}`;
-}
-
 /** Copy text, falling back to a hidden textarea. Resolves false if both fail. */
 export async function copyText(text: string): Promise<boolean> {
   try {

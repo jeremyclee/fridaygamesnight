@@ -1,0 +1,38 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Clover Puzzle: anyone (no sign-in) may read a puzzle or publish a new
+    // one; published puzzles can never be changed or deleted. The site checks
+    // puzzles fully before saving. These rules just bound what a direct write
+    // with the public web config can store.
+    match /clover/{puzzleId} {
+      allow read: if true;
+      allow create: if puzzleId.matches('^[0-9A-Za-z]{10}$') && isCloverPuzzle(request.resource.data);
+      allow update, delete: if false;
+    }
+
+    function isClue(value) {
+      return value is string && value.size() > 0 && value.size() <= 240;
+    }
+
+    function isCloverPuzzle(data) {
+      return data.keys().hasOnly(['schemaVersion', 'createdAt', 'clues', 'cards', 'solution'])
+        && data.schemaVersion == 1
+        && data.createdAt == request.time
+        && data.clues is map
+        && data.clues.keys().hasOnly(['top', 'right', 'bottom', 'left'])
+        && isClue(data.clues.top) && isClue(data.clues.right)
+        && isClue(data.clues.bottom) && isClue(data.clues.left)
+        && data.cards is list && data.cards.size() == 5
+        && data.solution is map
+        && data.solution.keys().hasOnly(['topLeft', 'topRight', 'bottomLeft', 'bottomRight']);
+    }
+
+    // Everything else stays closed until a game adds its own collection above.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

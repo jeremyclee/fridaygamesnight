@@ -9,10 +9,10 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: "Clover Puzzle",
-    template: "%s · Clover Puzzle",
+    default: "Friday Games Night",
+    template: "%s · Friday Games Night",
   },
-  description: "A word-association puzzle to share with friends. Write four clues; they rebuild the board.",
+  description: "Little games to play in the group chat.",
 };
 
 export const viewport: Viewport = {

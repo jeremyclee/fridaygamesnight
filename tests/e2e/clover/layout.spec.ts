@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { SAMPLE_ID } from "./fixtures";
-import { layoutProblems, open, slot, tapPlace, VIEWPORTS } from "../helpers";
+import { checkBoard, fillBoard, layoutProblems, open, slot, tapPlace, VIEWPORTS } from "../helpers";
 
 const SHOTS = "tests/e2e/screenshots/clover";
 
@@ -27,9 +27,12 @@ for (const viewport of VIEWPORTS) {
 
       await tapPlace(page, "c3", 2);
       await tapPlace(page, "c2", 3);
+      await expect(page.getByRole("button", { name: "Check Board" })).toBeEnabled();
+      await page.waitForTimeout(250); // let button colour transitions settle
       expect(await layoutProblems(page)).toEqual([]);
       await page.screenshot({ path: `${SHOTS}/${size}-3-complete.png` });
 
+      await checkBoard(page);
       await page.getByRole("button", { name: "Reveal Solution" }).click();
       await page.getByRole("dialog").getByRole("button", { name: "Reveal Solution" }).click();
       await expect(page.getByText("Solution", { exact: true })).toBeVisible();
@@ -38,6 +41,16 @@ for (const viewport of VIEWPORTS) {
       await page.screenshot({ path: `${SHOTS}/${size}-4-solution.png` });
 
       await expect(slot(page, 0)).toBeVisible();
+    });
+
+    test("second try", async ({ page }) => {
+      await open(page, `/clover/${SAMPLE_ID}`);
+      await fillBoard(page, ["c1", "c4", "c3", "c0"]);
+      await checkBoard(page);
+      await expect(page.getByText("Second try · 2 of 4 right")).toBeVisible();
+      await page.waitForTimeout(250);
+      expect(await layoutProblems(page)).toEqual([]);
+      await page.screenshot({ path: `${SHOTS}/${size}-9-second-try.png` });
     });
 
     test("creation screen", async ({ page }) => {
@@ -54,9 +67,10 @@ for (const viewport of VIEWPORTS) {
 
     test("home and dialogs", async ({ page }) => {
       await open(page, `/clover/${SAMPLE_ID}`);
-      await page.getByRole("button", { name: "Reveal Solution" }).click();
+      await fillBoard(page, ["c1", "c4", "c3", "c0"]);
+      await page.getByRole("button", { name: "Check Board" }).click();
       await page.waitForTimeout(250);
-      await page.screenshot({ path: `${SHOTS}/${size}-6-reveal-dialog.png` });
+      await page.screenshot({ path: `${SHOTS}/${size}-6-check-dialog.png` });
       await page.goto("/clover");
       await expect(page.getByText(/Puzzle #/)).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);

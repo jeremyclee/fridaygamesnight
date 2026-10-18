@@ -5,6 +5,7 @@ export const CREATE_API = "/api/clover/puzzles";
 
 export const puzzlePath = (id: string) => `/clover/${id}`;
 export const solutionApi = (id: string) => `/api/clover/puzzles/${id}/solution`;
+export const checkApi = (id: string) => `/api/clover/puzzles/${id}/check`;
 
 /** Full share link. Browser only. */
 export const puzzleUrl = (id: string) => `${window.location.origin}${puzzlePath(id)}`;

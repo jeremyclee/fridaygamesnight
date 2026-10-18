@@ -6,7 +6,7 @@
 import { z } from "zod";
 import { clueError } from "@/games/clover/lib/puzzle-validation";
 import { WORDS } from "@/games/clover/lib/word-library";
-import { EDGES, type Clues, type DraftBoard, type Puzzle } from "@/games/clover/types";
+import { EDGES, type Clues, type DraftBoard, type Placements, type Puzzle } from "@/games/clover/types";
 
 const word = z.string().min(1).max(20);
 const cardWords = z.object({ top: word, right: word, bottom: word, left: word });
@@ -27,6 +27,8 @@ const storedPuzzle = z.object({
   cards: z.array(card).length(5),
   solution: z.object({ topLeft: placement, topRight: placement, bottomLeft: placement, bottomRight: placement }),
 });
+
+const checkRequest = z.object({ placements: z.array(placement.nullable()).length(4) });
 
 const KNOWN_WORDS = new Set(WORDS);
 
@@ -53,4 +55,10 @@ export function parseCreatePuzzleRequest(
 export function parseStoredPuzzle(data: unknown): Puzzle | null {
   const parsed = storedPuzzle.safeParse(data);
   return parsed.success ? parsed.data : null;
+}
+
+/** A board to check for a second try. Returns null if malformed. */
+export function parseCheckRequest(body: unknown): Placements | null {
+  const parsed = checkRequest.safeParse(body);
+  return parsed.success ? parsed.data.placements : null;
 }

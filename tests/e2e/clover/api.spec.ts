@@ -62,3 +62,15 @@ test("solution endpoint validates ids", async ({ request }) => {
   const response = await request.get(`/api/clover/puzzles/${SAMPLE_ID}/solution`);
   expect(await response.json()).toEqual({ solution: SAMPLE_PUZZLE.solution });
 });
+
+test("check endpoint says only which slots are right", async ({ request }) => {
+  const url = `/api/clover/puzzles/${SAMPLE_ID}/check`;
+  const placements = [{ cardId: "c1", rotation: 0 }, { cardId: "c4", rotation: 0 }, { cardId: "c3", rotation: 0 }, null];
+  const response = await request.post(url, { data: { placements } });
+  expect(response.status()).toBe(200);
+  expect(await response.json()).toEqual({ correct: [true, false, true, false] });
+
+  expect((await request.post(url, { data: { placements: placements.slice(0, 3) } })).status()).toBe(400);
+  expect((await request.post("/api/clover/puzzles/Abcdef1234/check", { data: { placements } })).status()).toBe(404);
+  expect((await request.post("/api/clover/puzzles/bad!/check", { data: { placements } })).status()).toBe(400);
+});

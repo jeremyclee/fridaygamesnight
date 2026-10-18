@@ -49,4 +49,12 @@ export interface Arrangement {
   slots: (string | null)[];
   /** Rotation for every card, placed or not. */
   rotations: Record<string, Rotation>;
+  /**
+   * Set once the board has been checked for a second try: true for each slot
+   * whose card was right. Those cards stay put, and there's no second check.
+   */
+  locked?: boolean[];
 }
+
+/** What's in each slot (SLOTS order), as sent for checking. */
+export type Placements = (CardPlacement | null)[];

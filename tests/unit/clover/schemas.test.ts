@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { finalizePuzzle, generateBoard } from "@/games/clover/lib/puzzle-generator";
-import { parseCreatePuzzleRequest, parseStoredPuzzle } from "@/games/clover/lib/schemas";
+import { parseCheckRequest, parseCreatePuzzleRequest, parseStoredPuzzle } from "@/games/clover/lib/schemas";
 
 const clues = { top: "Breakfast", right: "Outdoors", bottom: "Sparkly", left: "Loud" };
 
@@ -53,5 +53,18 @@ describe("parseStoredPuzzle", () => {
     expect(parseStoredPuzzle({ ...puzzle, cards: puzzle.cards.slice(1) })).toBeNull();
     expect(parseStoredPuzzle({ clues: puzzle.clues })).toBeNull();
     expect(parseStoredPuzzle(null)).toBeNull();
+  });
+});
+
+describe("parseCheckRequest", () => {
+  it("accepts four slots, empty or placed", () => {
+    const placements = [{ cardId: "c1", rotation: 0 }, null, { cardId: "c3", rotation: 3 }, null];
+    expect(parseCheckRequest({ placements })).toEqual(placements);
+  });
+
+  it("rejects anything else", () => {
+    for (const body of [null, {}, { placements: [null, null, null] }, { placements: [{ cardId: "c1", rotation: 4 }, null, null, null] }]) {
+      expect(parseCheckRequest(body)).toBeNull();
+    }
   });
 });

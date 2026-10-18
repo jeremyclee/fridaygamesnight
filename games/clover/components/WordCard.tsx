@@ -1,5 +1,5 @@
 import type { CSSProperties, HTMLAttributes, Ref } from "react";
-import { RotateIcon } from "@/components/icons";
+import { CheckIcon, RotateIcon } from "@/components/icons";
 import { longestPair } from "@/games/clover/lib/puzzle-generator";
 import { EDGES, type CardWords, type Edge } from "@/games/clover/types";
 
@@ -40,6 +40,8 @@ interface WordCardProps extends HTMLAttributes<HTMLDivElement> {
   targeted?: boolean;
   tones?: Partial<Record<Edge, WordTone>>;
   rotate?: { corner: Corner; label: string; onRotate: () => void };
+  /** Confirmed correct by a check: tinted green, with a badge in this corner. */
+  lockedCorner?: Corner;
   /** Explicit sizing for cards rendered outside the board (the drag overlay). */
   shellStyle?: CSSProperties;
 }
@@ -57,6 +59,7 @@ export function WordCard({
   targeted = false,
   tones = {},
   rotate,
+  lockedCorner,
   shellStyle,
   className = "",
   ...faceProps
@@ -70,12 +73,15 @@ export function WordCard({
   return (
     <div
       className={[
-        "word-card card-size relative border bg-card transition-[box-shadow,opacity,transform,border-color] duration-150",
-        selected
-          ? "border-clover shadow-[0_0_0_2px_var(--color-clover),var(--shadow-card)] -translate-y-0.5"
-          : targeted
-            ? "border-clover shadow-[0_0_0_4px_var(--color-clover-soft),var(--shadow-card)]"
-            : "border-line shadow-[var(--shadow-card)]",
+        "word-card card-size relative border transition-[box-shadow,opacity,transform,border-color] duration-150",
+        lockedCorner ? "bg-clover-wash" : "bg-card",
+        lockedCorner
+          ? "border-clover shadow-[var(--shadow-card)]"
+          : selected
+            ? "border-clover shadow-[0_0_0_2px_var(--color-clover),var(--shadow-card)] -translate-y-0.5"
+            : targeted
+              ? "border-clover shadow-[0_0_0_4px_var(--color-clover-soft),var(--shadow-card)]"
+              : "border-line shadow-[var(--shadow-card)]",
         lifted ? "scale-105 shadow-[var(--shadow-lift)]" : "",
         ghost ? "opacity-30" : "",
       ].join(" ")}
@@ -93,6 +99,13 @@ export function WordCard({
         </span>
         {word("bottom", "w-bottom")}
       </div>
+      {lockedCorner && (
+        <span className="card-badge" data-corner={lockedCorner} aria-hidden="true">
+          <span className="grid place-items-center rounded-full bg-clover text-white">
+            <CheckIcon className="size-[64%]" strokeWidth={3} />
+          </span>
+        </span>
+      )}
       {rotate && (
         <button
           type="button"

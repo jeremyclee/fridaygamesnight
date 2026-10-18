@@ -163,7 +163,9 @@
   justify-self: center;
 }
 
-.rotate-button {
+/* Corner controls: the rotate button, or a check badge on a locked card. */
+.rotate-button,
+.card-badge {
   position: absolute;
   width: 27cqw;
   height: 27cqw;
@@ -171,27 +173,28 @@
   place-items: center;
 }
 
-.rotate-button[data-corner="tl"] {
+.word-card [data-corner="tl"] {
   top: 0;
   left: 0;
 }
 
-.rotate-button[data-corner="tr"] {
+.word-card [data-corner="tr"] {
   top: 0;
   right: 0;
 }
 
-.rotate-button[data-corner="bl"] {
+.word-card [data-corner="bl"] {
   bottom: 0;
   left: 0;
 }
 
-.rotate-button[data-corner="br"] {
+.word-card [data-corner="br"] {
   bottom: 0;
   right: 0;
 }
 
-.rotate-button > span {
+.rotate-button > span,
+.card-badge > span {
   width: 17cqw;
   height: 17cqw;
 }

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { open } from "../helpers";
+import { checkBoard, fillBoard, open } from "../helpers";
 
 test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
@@ -61,6 +61,9 @@ test("create, publish and solve a puzzle", async ({ page }) => {
     await expect(page.getByText(clue).filter({ visible: true })).toBeVisible();
   }
 
+  // Any four cards, then check, unlocks the solution.
+  await fillBoard(page, ["c0", "c1", "c2", "c3"]);
+  await checkBoard(page);
   await page.getByRole("button", { name: "Reveal Solution" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Reveal Solution" }).click();
   await expect(page.getByText("Solution", { exact: true })).toBeVisible();

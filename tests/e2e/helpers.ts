@@ -33,6 +33,20 @@ export async function tapPlace(page: Page, id: string, slotIndex: number) {
   await expect(slot(page, slotIndex).locator(`[data-card-id="${id}"]`)).toBeVisible();
 }
 
+/** Fill the board, slot by slot, with the given cards. */
+export async function fillBoard(page: Page, ids: [string, string, string, string]) {
+  for (const [index, id] of ids.entries()) await tapPlace(page, id, index);
+}
+
+/** Use the one check (second try) and wait for the result. */
+export async function checkBoard(page: Page) {
+  await page.getByRole("button", { name: "Check Board" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("You can only check once");
+  await dialog.getByRole("button", { name: "Check Board" }).click();
+  await expect(dialog).toBeHidden();
+}
+
 /** Drag with real pointer events so dnd-kit's sensor sees a drag. */
 export async function drag(page: Page, from: Locator, to: Locator) {
   const a = (await from.boundingBox())!;
@@ -77,7 +91,7 @@ export async function layoutProblems(page: Page): Promise<string[]> {
     for (const cardEl of cards) {
       const box = rect(cardEl);
       const words = [...cardEl.querySelectorAll("[data-edge]")].map((el) => ({ el, r: rect(el), text: el.textContent }));
-      const icon = cardEl.querySelector(".rotate-button > span");
+      const icon = cardEl.querySelector(".rotate-button > span, .card-badge > span");
       for (const w of words) {
         if (!inside(w.r, box)) problems.push(`word ${w.text} spills out of its card`);
         if (icon && overlaps(w.r, rect(icon))) problems.push(`word ${w.text} touches the rotate button`);

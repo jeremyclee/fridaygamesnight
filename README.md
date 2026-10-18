@@ -128,18 +128,24 @@ A mobile-first word-association game inspired by *So Clover!*
 3. **Save & Share** sends the board to the server, which adds a random decoy
    card, shuffles all five, stores the puzzle and returns a short link like
    `/clover/8xK92mQz3L`.
-4. Friends open the link, drag or tap cards into place, rotate them, screenshot
-   their answer and post it in the chat. Anyone can reveal the original
-   arrangement after a confirmation.
+4. Friends open the link, drag or tap cards into place and rotate them,
+   screenshotting their answers into the chat as they go.
+5. Once all four cards are placed, **Check Board** is the one move: cards in
+   the right spot *and* orientation stay (locked, marked with a green check)
+   and the rest go back to the tray, unrotated, for a second try. There's one
+   check per puzzle per device, and Reset then only clears unlocked cards.
+6. After checking, **Reveal Solution** (with a confirmation) shows the
+   original arrangement.
 
-There are no accounts, scores or answer checking; the chat handles that.
+There are no accounts or scores; the chat handles that.
 
 ### API
 
 | Endpoint                                  | Purpose                                                      |
 | ----------------------------------------- | ------------------------------------------------------------ |
 | `POST /api/clover/puzzles`                | Body `{ board, clues }`. Validates, finalizes and stores; returns `{ id }`. |
-| `GET /api/clover/puzzles/[id]/solution`   | The original arrangement, fetched only after the player confirms Reveal. |
+| `GET /api/clover/puzzles/[id]/solution`   | The original arrangement, fetched only after the player checks and then confirms Reveal. |
+| `POST /api/clover/puzzles/[id]/check`     | Body `{ placements }` (four `{ cardId, rotation }` or `null`). Returns `{ correct: boolean[4] }`, used by the second try, without revealing the answer. |
 
 Puzzle pages render on the server, sending clues and cards but not the
 solution. Link previews in WhatsApp and similar apps show the puzzle number

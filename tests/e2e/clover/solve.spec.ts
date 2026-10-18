@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { OTHER_ID, SAMPLE_ID, SAMPLE_PUZZLE } from "./fixtures";
-import { card, cardWords, drag, open, slot, tapPlace, tray } from "../helpers";
+import { card, cardWords, checkBoard, drag, fillBoard, open, slot, tapPlace, tray } from "../helpers";
 
 test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
@@ -151,8 +151,12 @@ test("each puzzle keeps its own progress", async ({ page }) => {
   expect(await slotContents(page)).toEqual(["c1", null, null, null]);
 });
 
-test("revealing the solution needs confirmation and keeps the player's board", async ({ page }) => {
+test("the solution unlocks after a check, needs confirmation, and keeps the player's board", async ({ page }) => {
   await open(page, PUZZLE);
+  await expect(page.getByRole("button", { name: "Reveal Solution" })).toHaveCount(0);
+  await fillBoard(page, ["c0", "c2", "c1", "c3"]); // all wrong
+  await checkBoard(page);
+  await expect(page.getByText("Second try · 0 of 4 right")).toBeVisible();
   await tapPlace(page, "c0", 0);
   await tapPlace(page, "c2", 1);
 
@@ -237,6 +241,8 @@ test("touch dragging works", async ({ page, browserName }) => {
 
 test("reveal can be retried if the answer fails to load", async ({ page }) => {
   await open(page, PUZZLE);
+  await fillBoard(page, ["c1", "c4", "c3", "c0"]);
+  await checkBoard(page);
   await page.route("**/solution", (route) => route.abort());
   await page.getByRole("button", { name: "Reveal Solution" }).click();
   const dialog = page.getByRole("dialog");
@@ -246,4 +252,101 @@ test("reveal can be retried if the answer fails to load", async ({ page }) => {
   await page.unroute("**/solution");
   await dialog.getByRole("button", { name: "Try Again" }).click();
   await expect(page.getByText("Solution", { exact: true })).toBeVisible();
+});
+
+test.describe("checking", () => {
+  test("is the only action until the board is full and checked", async ({ page }) => {
+    await open(page, PUZZLE);
+    const check = page.getByRole("button", { name: "Check Board" });
+    await expect(check).toBeDisabled();
+    await tapPlace(page, "c1", 0);
+    await tapPlace(page, "c4", 1);
+    await tapPlace(page, "c3", 2);
+    await expect(check).toBeDisabled();
+    await tapPlace(page, "c0", 3);
+    await expect(check).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Reveal Solution" })).toHaveCount(0);
+
+    await checkBoard(page);
+    await expect(check).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Reveal Solution" })).toBeEnabled();
+  });
+
+  test("keeps right cards locked and sends the rest back", async ({ page }) => {
+    await open(page, PUZZLE);
+    await tapPlace(page, "c1", 0); // right card, right rotation
+    await tapPlace(page, "c4", 1); // right card, wrong rotation
+    await tapPlace(page, "c3", 2); // right
+    await tapPlace(page, "c0", 3); // the decoy
+    await slot(page, 3).getByRole("button", { name: /^Rotate/ }).click();
+    await checkBoard(page);
+
+    await expect(page.getByText("Second try · 2 of 4 right")).toBeVisible();
+    await expect(page.getByText("Second try", { exact: true })).toBeVisible();
+    expect(await slotContents(page)).toEqual(["c1", null, "c3", null]);
+    expect(await trayContents(page)).toEqual(["c0", "c2", "c4"]);
+    expect(await cardWords(card(page, "c0"))).toEqual(SAMPLE_PUZZLE.cards[0].words);
+    await expect(card(page, "c1")).toHaveAttribute("data-locked", "true");
+
+    // Locked cards can't be rotated, moved, or replaced.
+    await expect(slot(page, 0).getByRole("button", { name: /^Rotate/ })).toHaveCount(0);
+    await drag(page, card(page, "c1"), slot(page, 1));
+    await drag(page, card(page, "c4"), slot(page, 0));
+    await card(page, "c2").click();
+    await card(page, "c3").click();
+    expect(await slotContents(page)).toEqual(["c1", null, "c3", null]);
+
+    // Fill in the rest; there's no second check.
+    await tray(page).click({ position: { x: 3, y: (await tray(page).boundingBox())!.height / 2 } });
+    await tapPlace(page, "c4", 1);
+    await tapPlace(page, "c2", 3);
+    await expect(page.getByRole("button", { name: "Check Board" })).toHaveCount(0);
+
+    // Survives a reload; Reset only clears unlocked cards.
+    await page.reload();
+    await expect(page.locator("main[data-hydrated]")).toBeVisible();
+    expect(await slotContents(page)).toEqual(["c1", "c4", "c3", "c2"]);
+    await page.getByRole("button", { name: "Reset" }).click();
+    expect(await slotContents(page)).toEqual(["c1", null, "c3", null]);
+    await expect(page.getByRole("button", { name: "Reset" })).toBeDisabled();
+
+    // Reveal still works and returns to the second-try board.
+    await page.getByRole("button", { name: "Reveal Solution" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Reveal Solution" }).click();
+    await expect(page.getByText("Solution", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Back to Puzzle" }).click();
+    expect(await slotContents(page)).toEqual(["c1", null, "c3", null]);
+  });
+
+  test("a fully right board is solved", async ({ page }) => {
+    await open(page, PUZZLE);
+    await tapPlace(page, "c1", 0);
+    await tapPlace(page, "c4", 1);
+    await slot(page, 1).getByRole("button", { name: /^Rotate/ }).click();
+    await tapPlace(page, "c3", 2);
+    await tapPlace(page, "c2", 3);
+    await slot(page, 3).getByRole("button", { name: /^Rotate/ }).click();
+    await slot(page, 3).getByRole("button", { name: /^Rotate/ }).click();
+    await checkBoard(page);
+
+    await expect(page.getByText("All four right!")).toBeVisible();
+    await expect(page.getByText("Solved", { exact: true })).toBeVisible();
+    await expect(page.locator("[data-locked]").filter({ visible: true })).toHaveCount(4);
+    await expect(page.getByRole("button", { name: "Reset" })).toBeDisabled();
+  });
+
+  test("can be retried if the check fails", async ({ page }) => {
+    await open(page, PUZZLE);
+    for (const [id, index] of [["c1", 0], ["c4", 1], ["c3", 2], ["c0", 3]] as const) await tapPlace(page, id, index);
+    await page.route("**/check", (route) => route.abort());
+    await page.getByRole("button", { name: "Check Board" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("button", { name: "Check Board" }).click();
+    await expect(dialog.getByRole("alert")).toContainText("Couldn’t check the board");
+    expect(await slotContents(page)).toEqual(["c1", "c4", "c3", "c0"]);
+
+    await page.unroute("**/check");
+    await dialog.getByRole("button", { name: "Try Again" }).click();
+    await expect(page.getByText("Second try · 2 of 4 right")).toBeVisible();
+  });
 });

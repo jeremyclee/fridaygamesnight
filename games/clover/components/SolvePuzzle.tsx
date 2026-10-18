@@ -26,6 +26,7 @@ import {
 import { createPortal } from "react-dom";
 import { IconButton } from "@/components/Button";
 import { CardTray } from "@/games/clover/components/CardTray";
+import { CheckBoardDialog } from "@/games/clover/components/CheckBoardDialog";
 import { GameBoard, SLOT_CORNERS, SLOT_NAMES } from "@/games/clover/components/GameBoard";
 import { LinkIcon } from "@/components/icons";
 import { PuzzleControls } from "@/games/clover/components/PuzzleControls";
@@ -44,17 +45,21 @@ import {
   saveProgress,
 } from "@/games/clover/lib/local-storage";
 import {
+  applyCheck,
+  canReset,
   emptyArrangement,
-  isEmptyArrangement,
+  isBoardFull,
   locateCard,
   moveCard,
+  placementsOf,
+  resetArrangement,
   slotLocation,
   TRAY,
   trayCardIds,
   type Location,
 } from "@/games/clover/lib/placement";
 import { puzzleLabel } from "@/games/clover/lib/puzzle-id";
-import { puzzleUrl, solutionApi } from "@/games/clover/routes";
+import { checkApi, puzzleUrl, solutionApi } from "@/games/clover/routes";
 import {
   SLOTS,
   type Arrangement,
@@ -99,9 +104,10 @@ function SolveGame({ id, puzzle, hydrated }: SolvePuzzleProps & { hydrated: bool
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [dragging, setDragging] = useState<{ id: string; width: number; height: number } | null>(null);
-  const [view, setView] = useState<"play" | "confirm" | "solution">("play");
+  const [view, setView] = useState<"play" | "confirm" | "check" | "solution">("play");
   const [solution, setSolution] = useState<Solution | null>(null);
   const [reveal, setReveal] = useState<{ pending: boolean; error: string | null }>({ pending: false, error: null });
+  const [check, setCheck] = useState<{ pending: boolean; error: string | null }>({ pending: false, error: null });
   const [share, setShare] = useState<"created" | "fallback" | null>(() =>
     hydrated && isJustCreated(id) ? "created" : null,
   );
@@ -132,13 +138,19 @@ function SolveGame({ id, puzzle, hydrated }: SolvePuzzleProps & { hydrated: bool
       ? (SLOTS.map((slot) => shown[slot]).find((p) => p.cardId === cardId)?.rotation ?? 0)
       : arrangement.rotations[cardId];
 
+  // After a check (the second try), right cards are locked in place.
+  const checked = arrangement.locked !== undefined;
+  const rightCount = arrangement.locked?.filter(Boolean).length ?? 0;
+  const solved = rightCount === SLOTS.length;
+  const isLockedSlot = (index: number) => !revealed && arrangement.locked?.[index] === true;
+
   const selectedLocation = selectedId ? locateCard(arrangement.slots, selectedId) : null;
   const draggingFromSlot = dragging ? locateCard(arrangement.slots, dragging.id).kind === "slot" : false;
 
   // Interactions ----------------------------------------------------------------
 
   const move = (cardId: string, target: Location) =>
-    setArrangement((current) => ({ ...current, slots: moveCard(current.slots, cardId, target) }));
+    setArrangement((current) => ({ ...current, slots: moveCard(current.slots, cardId, target, current.locked) }));
 
   const rotate = (cardId: string) =>
     setArrangement((current) => ({
@@ -149,10 +161,11 @@ function SolveGame({ id, puzzle, hydrated }: SolvePuzzleProps & { hydrated: bool
   /** Tap a card: select it, or use it as the destination for the selected card. */
   function tapCard(cardId: string) {
     if (isDragTail(lastDragEnd.current)) return;
+    const tapped = locateCard(arrangement.slots, cardId);
+    if (tapped.kind === "slot" && isLockedSlot(tapped.index)) return;
     if (!selectedId) return setSelectedId(cardId);
     if (selectedId === cardId) return setSelectedId(null);
 
-    const tapped = locateCard(arrangement.slots, cardId);
     if (tapped.kind === "slot") {
       move(selectedId, tapped);
       setSelectedId(null);
@@ -178,7 +191,7 @@ function SolveGame({ id, puzzle, hydrated }: SolvePuzzleProps & { hydrated: bool
 
   function reset() {
     const previous = arrangement;
-    setArrangement(emptyArrangement(puzzle));
+    setArrangement(resetArrangement(arrangement, puzzle));
     setSelectedId(null);
     showToast({ text: "Board reset", action: { label: "Undo", onClick: () => setArrangement(previous) } });
   }
@@ -195,6 +208,27 @@ function SolveGame({ id, puzzle, hydrated }: SolvePuzzleProps & { hydrated: bool
       setReveal({ pending: false, error: null });
     } catch {
       setReveal({ pending: false, error: "Couldn’t load the answer. Check your connection and try again." });
+    }
+  }
+
+  async function checkBoard() {
+    setCheck({ pending: true, error: null });
+    try {
+      const response = await fetch(checkApi(id), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ placements: placementsOf(arrangement) }),
+      });
+      const { correct } = (await response.json().catch(() => ({}))) as { correct?: unknown };
+      const valid =
+        Array.isArray(correct) && correct.length === SLOTS.length && correct.every((v) => typeof v === "boolean");
+      if (!response.ok || !valid) throw new Error(`Check request failed (${response.status})`);
+      setArrangement((current) => applyCheck(current, correct));
+      setSelectedId(null);
+      setView("play");
+      setCheck({ pending: false, error: null });
+    } catch {
+      setCheck({ pending: false, error: "Couldn’t check the board. Check your connection and try again." });
     }
   }
 
@@ -220,14 +254,18 @@ function SolveGame({ id, puzzle, hydrated }: SolvePuzzleProps & { hydrated: bool
 
   let hint = "Drag or tap a card to place it";
   if (revealed) hint = "The decoy";
+  else if (solved) hint = "All four right!";
   else if (selectedLocation?.kind === "slot") hint = "Tap a spot to move it, or the tray to remove it";
   else if (selectedLocation) hint = "Now tap a spot on the board";
+  else if (checked) hint = `Second try · ${rightCount} of 4 right`;
   else if (trayIds.length === 1) hint = "Unused card";
+  const status = revealed ? "Solution" : solved ? "Solved" : checked ? "Second try" : null;
 
-  const cardProps = (cardId: string, corner?: Corner): CardViewProps => ({
+  const cardProps = (cardId: string, corner?: Corner, locked = false): CardViewProps => ({
     card: cardsById.get(cardId)!,
     rotation: rotationOf(cardId),
     interactive: !revealed,
+    locked,
     selected: selectedId === cardId,
     corner,
     onTap: () => tapCard(cardId),
@@ -243,9 +281,9 @@ function SolveGame({ id, puzzle, hydrated }: SolvePuzzleProps & { hydrated: bool
         title={
           <>
             <span>Puzzle #{label}</span>
-            {revealed && (
+            {status && (
               <span className="rounded-full bg-clover-soft px-2 py-0.5 text-xs font-semibold text-clover-dark">
-                Solution
+                {status}
               </span>
             )}
           </>
@@ -282,14 +320,14 @@ function SolveGame({ id, puzzle, hydrated }: SolvePuzzleProps & { hydrated: bool
               renderSlot={(index) => (
                 <BoardSlot
                   index={index}
-                  disabled={revealed}
+                  disabled={revealed || isLockedSlot(index)}
                   selecting={selectedId !== null && slots[index] !== selectedId}
                   onTap={(event) => {
                     event.stopPropagation();
                     tapSlot(index);
                   }}
                 >
-                  {slots[index] && <CardView {...cardProps(slots[index], SLOT_CORNERS[index])} />}
+                  {slots[index] && <CardView {...cardProps(slots[index], SLOT_CORNERS[index], isLockedSlot(index))} />}
                 </BoardSlot>
               )}
             />
@@ -334,8 +372,14 @@ function SolveGame({ id, puzzle, hydrated }: SolvePuzzleProps & { hydrated: bool
       ) : (
         <PuzzleControls
           mode="play"
-          canReset={!isEmptyArrangement(arrangement)}
+          canReset={canReset(arrangement, puzzle)}
           onReset={reset}
+          checked={checked}
+          canCheck={isBoardFull(arrangement)}
+          onCheck={() => {
+            setSelectedId(null);
+            setView("check");
+          }}
           onReveal={() => {
             setSelectedId(null);
             setView("confirm");
@@ -352,6 +396,16 @@ function SolveGame({ id, puzzle, hydrated }: SolvePuzzleProps & { hydrated: bool
           setReveal({ pending: false, error: null });
         }}
         onConfirm={revealSolution}
+      />
+      <CheckBoardDialog
+        open={view === "check"}
+        pending={check.pending}
+        error={check.error}
+        onCancel={() => {
+          setView("play");
+          setCheck({ pending: false, error: null });
+        }}
+        onConfirm={checkBoard}
       />
       {hydrated && (
         <ShareDialog
@@ -415,6 +469,8 @@ interface CardViewProps {
   card: Card;
   rotation: Rotation;
   interactive: boolean;
+  /** Confirmed right by a check; can't be moved or rotated. */
+  locked: boolean;
   selected: boolean;
   corner?: Corner;
   onTap: () => void;
@@ -422,11 +478,26 @@ interface CardViewProps {
 }
 
 /** A card on the board or in the tray: draggable, tappable and (when placed) rotatable. */
-function CardView({ card, rotation, interactive, selected, corner, onTap, onRotate }: CardViewProps) {
-  const { setNodeRef, listeners, attributes, isDragging } = useDraggable({ id: card.id, disabled: !interactive });
+function CardView({ card, rotation, interactive, locked, selected, corner, onTap, onRotate }: CardViewProps) {
+  const { setNodeRef, listeners, attributes, isDragging } = useDraggable({
+    id: card.id,
+    disabled: !interactive || locked,
+  });
   const targeted = useTargeted();
   const words = rotateWords(card.words, rotation);
 
+  if (locked) {
+    return (
+      <WordCard
+        words={words}
+        lockedCorner={corner}
+        role="img"
+        aria-label={`Correct. ${cardLabel(words)}`}
+        data-card-id={card.id}
+        data-locked
+      />
+    );
+  }
   if (!interactive) {
     return <WordCard words={words} role="img" aria-label={cardLabel(words)} data-card-id={card.id} />;
   }
